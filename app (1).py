@@ -1,119 +1,129 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
 import time
-import json
-import random
-import math
 from datetime import datetime
 
-class GatewayTelemedicina:
-    def __init__(self, paciente_id):
-        self.paciente_id = paciente_id
-        
-        # --- Variáveis Iniciais de Estado ---
-        # Sinais Contínuos (iniciam em zero ou normal)
-        self.spo2 = 98
-        self.freq_cardiaca = 75
-        self.ecg_t = 0 # Tempo para gerar a onda senoidal do ECG
-        
-        # Dados Estáticos (Lidos apenas uma vez por consulta)
-        self.peso = 0.0
-        self.altura = 0.0
-        self.pressao_sistolica = 0
-        self.pressao_diastolica = 0
-        
-        # Flag para controlar quando enviar os estáticos
-        self.dados_estaticos_coletados = False
-        
-        print(f"--- Sistema de Aquisição Iniciado para o Paciente {self.paciente_id} ---")
-        print("Aguardando leitura dos sensores...\n")
-
-    # ==========================================
-    # MÉTODOS DE LEITURA DOS SENSORES (SIMULAÇÃO)
-    # ==========================================
-    
-    def ler_sinais_continuos(self):
-        """Simula a leitura USB/BLE contínua do Oxímetro e do ECG"""
-        # SpO2 varia levemente entre 96 e 99%
-        self.spo2 = random.randint(96, 99)
-        
-        # Frequência Cardíaca varia levemente entre 70 e 80 bpm
-        self.freq_cardiaca += random.randint(-1, 1)
-        if self.freq_cardiaca < 60: self.freq_cardiaca = 60
-        if self.freq_cardiaca > 90: self.freq_cardiaca = 90
-            
-        # Simula uma onda de ECG simplificada (senóide com picos)
-        self.ecg_t += 0.1
-        onda_ecg = math.sin(self.ecg_t * 5) + (2 * math.sin(self.ecg_t * 10)) # Ruído/Pico
-        valor_ecg = round(onda_ecg, 3)
-        
-        return {
-            "tipo_dado": "STREAMING",
-            "timestamp": datetime.now().isoformat(),
-            "paciente_id": self.paciente_id,
-            "spo2_perc": self.spo2,
-            "bpm": self.freq_cardiaca,
-            "onda_ecg_mv": valor_ecg
-        }
-
-    def realizar_medicao_estatica(self):
-        """Simula o aperto de botão do manguito de pressão e estabilização da balança"""
-        print("\n>>> INICIANDO MEDIÇÃO ESTÁTICA (PRESSÃO, PESO, ALTURA)...")
-        time.sleep(2) # Simula o tempo que a braçadeira leva para inflar e a balança estabilizar
-        
-        self.pressao_sistolica = random.randint(110, 130)
-        self.pressao_diastolica = random.randint(70, 85)
-        self.peso = round(random.uniform(70.0, 75.0), 1) # Ex: 72.4 kg
-        self.altura = 1.75 # Ex: 1.75 m
-        
-        self.dados_estaticos_coletados = True
-        print(">>> MEDIÇÃO CONCLUÍDA!\n")
-        
-        return {
-            "tipo_dado": "ESTATICO",
-            "timestamp": datetime.now().isoformat(),
-            "paciente_id": self.paciente_id,
-            "pressao_sis": self.pressao_sistolica,
-            "pressao_dia": self.pressao_diastolica,
-            "peso_kg": self.peso,
-            "altura_m": self.altura,
-            "imc": round(self.peso / (self.altura ** 2), 2)
-        }
-
-    # ==========================================
-    # MÓDULO DE TRANSMISSÃO (GATEWAY PARA NUVEM)
-    # ==========================================
-    
-    def transmitir_para_nuvem(self, pacote_dados):
-        """No sistema real, aqui iria o código MQTT.publish() ou requests.post()"""
-        json_payload = json.dumps(pacote_dados)
-        
-        if pacote_dados["tipo_dado"] == "STREAMING":
-            print(f"[TCP/WebSockets] => Enviando contínuo: {json_payload}")
-        else:
-            print(f"\n[API REST] => ENVIANDO PRONTUÁRIO ESTÁTICO: {json_payload}\n")
+# ==========================================
+# CONFIGURAÇÃO INICIAL DA PÁGINA
+# ==========================================
+st.set_page_config(
+    page_title="Telemedicina - Dashboard do Médico", 
+    page_icon="🩺", 
+    layout="wide"
+)
 
 # ==========================================
-# ROTINA PRINCIPAL (O LOOP DA ENFERMEIRA)
+# BARRA LATERAL (SIDEBAR) - DADOS DO ATENDIMENTO
 # ==========================================
-if __name__ == "__main__":
-    # Inicia o software para o paciente 999
-    gateway = GatewayTelemedicina(paciente_id="PCT-999")
+st.sidebar.header("📋 Informações da Consulta")
+st.sidebar.markdown("**Paciente:** João Silva")
+st.sidebar.markdown("**Idade:** 65 anos")
+st.sidebar.markdown("**ID Paciente:** #10492")
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Enfermeiro(a) local:** Maria Souza")
+st.sidebar.success("🟢 Status: Gateway Conectado")
+
+# ==========================================
+# CABEÇALHO PRINCIPAL
+# ==========================================
+st.title("🩺 Dashboard de Telemedicina - Acompanhamento Assistido")
+st.markdown("Monitoramento de sinais vitais e antropometria enviados em tempo real pelo Gateway (Enfermeiro) para o Médico.")
+st.markdown("---")
+
+# ==========================================
+# GERENCIAMENTO DE ESTADO (MEMÓRIA DO APP)
+# ==========================================
+if 'historico' not in st.session_state:
+    st.session_state.historico = pd.DataFrame(
+        columns=[
+            'Horário', 
+            'BPM', 
+            'SpO2 (%)', 
+            'Pressão Sistólica', 
+            'Pressão Diastólica',
+            'Peso (kg)',
+            'Altura (m)',
+            'IMC'
+        ]
+    )
+
+# ==========================================
+# FUNÇÃO DE EMULAÇÃO DE DADOS (O GATEWAY)
+# ==========================================
+def obter_dados_do_sensor():
+    now = datetime.now().strftime("%H:%M:%S")
+    bpm = np.random.randint(60, 100)           
+    spo2 = np.random.randint(95, 100)          
+    sys_bp = np.random.randint(110, 130)       
+    dia_bp = np.random.randint(70, 85)         
     
-    ciclos = 0
-    try:
-        # Loop infinito simulando o carrinho de telemedicina ligado
-        while True:
-            # 1. Todo segundo, manda os dados contínuos do coração (ECG, SpO2)
-            pacote_continuo = gateway.ler_sinais_continuos()
-            gateway.transmitir_para_nuvem(pacote_continuo)
-            
-            # 2. Simula que a enfermeira fez a medição de Pressão e Peso após 5 segundos de consulta
-            ciclos += 1
-            if ciclos == 5 and not gateway.dados_estaticos_coletados:
-                pacote_estatico = gateway.realizar_medicao_estatica()
-                gateway.transmitir_para_nuvem(pacote_estatico)
-                
-            # Aguarda 1 segundo antes de gerar o próximo ponto no gráfico
-            time.sleep(1)
-            
-    except KeyboardInterrupt:
-        print("\nSistema Desligado pela Enfermagem. Encerrando porta COM.")
+    # Emulação dos dados da Balança e Estadiômetro
+    peso = round(float(np.random.uniform(72.0, 73.5)), 1)
+    altura = 1.75
+    imc = round(peso / (altura ** 2), 2)
+    
+    return {
+        "Horário": now, 
+        "BPM": bpm, 
+        "SpO2 (%)": spo2, 
+        "Pressão Sistólica": sys_bp, 
+        "Pressão Diastólica": dia_bp,
+        "Peso (kg)": peso,
+        "Altura (m)": altura,
+        "IMC": imc
+    }
+
+# ==========================================
+# LÓGICA DE ATUALIZAÇÃO DOS DADOS
+# ==========================================
+novo_dado = obter_dados_do_sensor()
+novo_df = pd.DataFrame([novo_dado])
+st.session_state.historico = pd.concat([novo_df, st.session_state.historico]).head(20)
+
+# ==========================================
+# RENDERIZAÇÃO DA INTERFACE VISUAL
+# ==========================================
+placeholder = st.empty()
+
+with placeholder.container():
+    leitura_atual = st.session_state.historico.iloc[0]
+    
+    # BLOCO 1: SINAIS VITAIS DINÂMICOS
+    st.subheader("🩸 Sinais Vitais (Tempo Real)")
+    col1, col2, col3 = st.columns(3)
+    
+    col1.metric(label="❤️ Batimentos Cardíacos", value=f"{leitura_atual['BPM']} BPM")
+    col2.metric(label="💨 Saturação de Oxigênio", value=f"{leitura_atual['SpO2 (%)']} %")
+    col3.metric(label="🩸 Pressão Arterial", value=f"{leitura_atual['Pressão Sistólica']}/{leitura_atual['Pressão Diastólica']} mmHg")
+    
+    st.markdown("---")
+    
+    # BLOCO 2: DADOS ANTROPOMÉTRICOS ESTÁTICOS
+    st.subheader("⚖️ Antropometria do Paciente")
+    col4, col5, col6 = st.columns(3)
+    
+    col4.metric(label="⚖️ Peso Corporais", value=f"{leitura_atual['Peso (kg)']} kg")
+    col5.metric(label="📏 Altura", value=f"{leitura_atual['Altura (m)']} m")
+    col6.metric(label="📊 IMC Calculado", value=f"{leitura_atual['IMC']} kg/m²")
+    
+    st.markdown("---")
+    
+    # BLOCO 3: GRÁFICO DE ACOMPANHAMENTO
+    st.markdown("### 📈 Monitoramento Contínuo de Batimentos (BPM)")
+    dados_grafico = st.session_state.historico[['Horário', 'BPM']].copy()
+    dados_grafico = dados_grafico.set_index('Horário')
+    dados_grafico = dados_grafico.iloc[::-1] 
+    st.line_chart(dados_grafico)
+    
+    st.markdown("---")
+    
+    # BLOCO 4: TABELA COMPLETA DE REGISTROS
+    st.markdown("### 📋 Últimas Medições Recebidas do Gateway")
+    st.dataframe(st.session_state.historico, use_container_width=True, hide_index=True)
+
+# ==========================================
+# LOOP DE TEMPO REAL (EMULAÇÃO DE FLUXO)
+# ==========================================
+time.sleep(3)
+st.rerun()
