@@ -14,30 +14,55 @@ st.set_page_config(
 )
 
 # ==========================================
-# BARRA LATERAL (SIDEBAR) - DADOS DO ATENDIMENTO
+# GERENCIAMENTO DE ESTADO (MEMÓRIA DO APP)
 # ==========================================
-st.sidebar.header("📋 Informações da Consulta")
-st.sidebar.markdown("**Paciente:** João Silva")
-st.sidebar.markdown("**Idade:** 65 anos")
-st.sidebar.markdown("**ID Paciente:** #10492")
+# Precisamos manter o histórico de medições na memória para não perder a cada atualização
+if 'historico' not in st.session_state:
+    st.session_state.historico = pd.DataFrame(
+        columns=['Horário', 'BPM', 'SpO2 (%)', 'Pressão Sistólica', 'Pressão Diastólica']
+    )
+
+# Estado para controlar se a simulação (recebimento de dados) está ligada ou desligada
+if 'monitorando' not in st.session_state:
+    st.session_state.monitorando = False
+
+# ==========================================
+# BARRA LATERAL (SIDEBAR) - DADOS EDITÁVEIS
+# ==========================================
+st.sidebar.header("📋 Cadastro da Consulta")
+
+# Agora usamos st.text_input e st.number_input para permitir que o usuário digite os dados
+nome_paciente = st.sidebar.text_input("Nome do Paciente:", value="João Silva")
+idade_paciente = st.sidebar.number_input("Idade:", min_value=0, max_value=120, value=65)
+id_paciente = st.sidebar.text_input("ID do Paciente:", value="#10492")
+
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Enfermeiro(a) local:** Maria Souza")
-st.sidebar.success("🟢 Status: Gateway Conectado")
+nome_enfermeiro = st.sidebar.text_input("Enfermeiro(a) local:", value="Maria Souza")
+
+# Botão para ligar/desligar o monitoramento
+if st.sidebar.button("Iniciar / Parar Monitoramento", type="primary"):
+    st.session_state.monitorando = not st.session_state.monitorando
+
+# Indicador de Status Visual
+if st.session_state.monitorando:
+    st.sidebar.success("🟢 Status: Gateway Conectado e Transmitindo")
+else:
+    st.sidebar.error("🔴 Status: Monitoramento Pausado")
+
+# Botão para limpar os dados antigos caso troque de paciente
+if st.sidebar.button("Limpar Histórico de Sinais"):
+    st.session_state.historico = pd.DataFrame(
+        columns=['Horário', 'BPM', 'SpO2 (%)', 'Pressão Sistólica', 'Pressão Diastólica']
+    )
+    st.rerun()
 
 # ==========================================
 # CABEÇALHO PRINCIPAL
 # ==========================================
 st.title("🩺 Dashboard de Telemedicina - Acompanhamento Assistido")
-st.markdown("Monitoramento de sinais vitais enviados em tempo real pelo Gateway (Enfermeiro) para o Médico.")
+# Mostra dinamicamente o nome que foi digitado na barra lateral
+st.markdown(f"**Paciente em atendimento:** {nome_paciente} ({idade_paciente} anos) | **Enfermeiro(a) responsável:** {nome_enfermeiro}")
 st.markdown("---")
-
-# ==========================================
-# GERENCIAMENTO DE ESTADO (MEMÓRIA DO APP)
-# ==========================================
-if 'historico' not in st.session_state:
-    st.session_state.historico = pd.DataFrame(
-        columns=['Horário', 'BPM', 'SpO2 (%)', 'Pressão Sistólica', 'Pressão Diastólica']
-    )
 
 # ==========================================
 # FUNÇÃO DE EMULAÇÃO DE DADOS (O GATEWAY)
@@ -58,41 +83,49 @@ def obter_dados_do_sensor():
     }
 
 # ==========================================
-# LÓGICA DE ATUALIZAÇÃO DOS DADOS
+# LÓGICA E RENDERIZAÇÃO
 # ==========================================
-novo_dado = obter_dados_do_sensor()
-novo_df = pd.DataFrame([novo_dado])
-st.session_state.historico = pd.concat([novo_df, st.session_state.historico]).head(20)
+# Só gera e adiciona novos dados se o botão de monitoramento estiver ligado
+if st.session_state.monitorando:
+    novo_dado = obter_dados_do_sensor()
+    novo_df = pd.DataFrame([novo_dado])
+    st.session_state.historico = pd.concat([novo_df, st.session_state.historico]).head(20)
+
+# Verifica se existe algum dado no histórico para exibir os gráficos
+if not st.session_state.historico.empty:
+    placeholder = st.empty()
+
+    with placeholder.container():
+        leitura_atual = st.session_state.historico.iloc[0]
+        
+        # --- CARDS DE SINAIS VITAIS ---
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="❤️ Batimentos Cardíacos", value=f"{leitura_atual['BPM']} BPM")
+        col2.metric(label="💨 Saturação de Oxigênio", value=f"{leitura_atual['SpO2 (%)']} %")
+        col3.metric(label="🩸 Pressão Arterial", value=f"{leitura_atual['Pressão Sistólica']}/{leitura_atual['Pressão Diastólica']} mmHg")
+        
+        st.markdown("---")
+        
+        # --- GRÁFICO ---
+        st.markdown(f"### 📈 Monitoramento Contínuo - {nome_paciente}")
+        dados_grafico = st.session_state.historico[['Horário', 'BPM']].copy()
+        dados_grafico = dados_grafico.set_index('Horário')
+        dados_grafico = dados_grafico.iloc[::-1] 
+        st.line_chart(dados_grafico)
+        
+        st.markdown("---")
+        
+        # --- TABELA ---
+        st.markdown("### 📋 Histórico de Medições")
+        st.dataframe(st.session_state.historico, use_container_width=True, hide_index=True)
+
+else:
+    st.info("Aguardando início do monitoramento. Clique em 'Iniciar Monitoramento' na barra lateral.")
 
 # ==========================================
-# RENDERIZAÇÃO DA INTERFACE VISUAL
+# LOOP DE TEMPO REAL
 # ==========================================
-placeholder = st.empty()
-
-with placeholder.container():
-    leitura_atual = st.session_state.historico.iloc[0]
-    
-    col1, col2, col3 = st.columns(3)
-    
-    col1.metric(label="❤️ Batimentos Cardíacos", value=f"{leitura_atual['BPM']} BPM")
-    col2.metric(label="💨 Saturação de Oxigênio", value=f"{leitura_atual['SpO2 (%)']} %")
-    col3.metric(label="🩸 Pressão Arterial", value=f"{leitura_atual['Pressão Sistólica']}/{leitura_atual['Pressão Diastólica']} mmHg")
-    
-    st.markdown("---")
-    
-    st.markdown("### 📈 Monitoramento Contínuo de Batimentos (BPM)")
-    dados_grafico = st.session_state.historico[['Horário', 'BPM']].copy()
-    dados_grafico = dados_grafico.set_index('Horário')
-    dados_grafico = dados_grafico.iloc[::-1] 
-    st.line_chart(dados_grafico)
-    
-    st.markdown("---")
-    
-    st.markdown("### 📋 Últimas Medições Recebidas do Gateway")
-    st.dataframe(st.session_state.historico, use_container_width=True, hide_index=True)
-
-# ==========================================
-# LOOP DE TEMPO REAL (EMULAÇÃO DE FLUXO)
-# ==========================================
-time.sleep(3)
-st.rerun()
+# Se o monitoramento estiver ativo, ele pausa por 3 segundos e recarrega a página para atualizar o gráfico
+if st.session_state.monitorando:
+    time.sleep(3)
+    st.rerun()
