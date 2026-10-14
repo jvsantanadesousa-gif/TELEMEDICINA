@@ -14,21 +14,35 @@ st.set_page_config(
 )
 
 # ==========================================
-# BARRA LATERAL (SIDEBAR) - DADOS DO ATENDIMENTO
+# BARRA LATERAL (SIDEBAR) - ENTRADA MANUAL DE DADOS
 # ==========================================
-st.sidebar.header("📋 Informações da Consulta")
-st.sidebar.markdown("**Paciente:** João Silva")
-st.sidebar.markdown("**Idade:** 65 anos")
-st.sidebar.markdown("**ID Paciente:** #10492")
+st.sidebar.header("📋 Cadastro e Entrada de Dados")
+
+# Campos interativos para digitação manual dos dados do paciente e profissional
+nome_paciente = st.sidebar.text_input("Nome do Paciente", value="João Silva")
+idade_paciente = st.sidebar.number_input("Idade (anos)", min_value=0, max_value=120, value=65, step=1)
+id_paciente = st.sidebar.text_input("ID do Paciente", value="#10492")
+enfermeiro = st.sidebar.text_input("Enfermeiro(a) local", value="Maria Souza")
+
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Enfermeiro(a) local:** Maria Souza")
+st.sidebar.subheader("⚖️ Medições Antropométricas (Entrada Manual)")
+
+# Campos manuais para Peso e Altura
+peso = st.sidebar.number_input("Peso (kg)", min_value=1.0, max_value=300.0, value=72.5, step=0.1)
+altura = st.sidebar.number_input("Altura (m)", min_value=0.50, max_value=2.50, value=1.75, step=0.01)
+
+# Cálculo automático do IMC com base nas entradas manuais
+imc = round(peso / (altura ** 2), 2) if altura > 0 else 0.0
+
+st.sidebar.markdown("---")
 st.sidebar.success("🟢 Status: Gateway Conectado")
 
 # ==========================================
 # CABEÇALHO PRINCIPAL
 # ==========================================
 st.title("🩺 Dashboard de Telemedicina - Acompanhamento Assistido")
-st.markdown("Monitoramento de sinais vitais e antropometria enviados em tempo real pelo Gateway (Enfermeiro) para o Médico.")
+st.markdown(f"**Paciente:** {nome_paciente} | **Idade:** {idade_paciente} anos | **ID:** {id_paciente} | **Enfermeiro(a):** {enfermeiro}")
+st.markdown("Monitoramento em tempo real integrando medições manuais e sinais vitais dos sensores.")
 st.markdown("---")
 
 # ==========================================
@@ -49,19 +63,14 @@ if 'historico' not in st.session_state:
     )
 
 # ==========================================
-# FUNÇÃO DE EMULAÇÃO DE DADOS (O GATEWAY)
+# FUNÇÃO DE EMULAÇÃO DE DADOS DOS SENSORES
 # ==========================================
-def obter_dados_do_sensor():
+def obter_dados_do_sensor(peso_val, altura_val, imc_val):
     now = datetime.now().strftime("%H:%M:%S")
     bpm = np.random.randint(60, 100)           
     spo2 = np.random.randint(95, 100)          
     sys_bp = np.random.randint(110, 130)       
     dia_bp = np.random.randint(70, 85)         
-    
-    # Emulação dos dados da Balança e Estadiômetro
-    peso = round(float(np.random.uniform(72.0, 73.5)), 1)
-    altura = 1.75
-    imc = round(peso / (altura ** 2), 2)
     
     return {
         "Horário": now, 
@@ -69,15 +78,15 @@ def obter_dados_do_sensor():
         "SpO2 (%)": spo2, 
         "Pressão Sistólica": sys_bp, 
         "Pressão Diastólica": dia_bp,
-        "Peso (kg)": peso,
-        "Altura (m)": altura,
-        "IMC": imc
+        "Peso (kg)": peso_val,
+        "Altura (m)": altura_val,
+        "IMC": imc_val
     }
 
 # ==========================================
 # LÓGICA DE ATUALIZAÇÃO DOS DADOS
 # ==========================================
-novo_dado = obter_dados_do_sensor()
+novo_dado = obter_dados_do_sensor(peso, altura, imc)
 novo_df = pd.DataFrame([novo_dado])
 st.session_state.historico = pd.concat([novo_df, st.session_state.historico]).head(20)
 
@@ -89,8 +98,8 @@ placeholder = st.empty()
 with placeholder.container():
     leitura_atual = st.session_state.historico.iloc[0]
     
-    # BLOCO 1: SINAIS VITAIS DINÂMICOS
-    st.subheader("🩸 Sinais Vitais (Tempo Real)")
+    # BLOCO 1: SINAIS VITAIS DINÂMICOS (SENSORES)
+    st.subheader("🩸 Sinais Vitais (Tempo Real - Sensores)")
     col1, col2, col3 = st.columns(3)
     
     col1.metric(label="❤️ Batimentos Cardíacos", value=f"{leitura_atual['BPM']} BPM")
@@ -99,11 +108,11 @@ with placeholder.container():
     
     st.markdown("---")
     
-    # BLOCO 2: DADOS ANTROPOMÉTRICOS ESTÁTICOS
-    st.subheader("⚖️ Antropometria do Paciente")
+    # BLOCO 2: DADOS ANTROPOMÉTRICOS (INSERIDOS MANUAMENTE)
+    st.subheader("⚖️ Antropometria (Definida Manualmente)")
     col4, col5, col6 = st.columns(3)
     
-    col4.metric(label="⚖️ Peso Corporais", value=f"{leitura_atual['Peso (kg)']} kg")
+    col4.metric(label="⚖️ Peso Corporal", value=f"{leitura_atual['Peso (kg)']} kg")
     col5.metric(label="📏 Altura", value=f"{leitura_atual['Altura (m)']} m")
     col6.metric(label="📊 IMC Calculado", value=f"{leitura_atual['IMC']} kg/m²")
     
@@ -119,7 +128,7 @@ with placeholder.container():
     st.markdown("---")
     
     # BLOCO 4: TABELA COMPLETA DE REGISTROS
-    st.markdown("### 📋 Últimas Medições Recebidas do Gateway")
+    st.markdown("### 📋 Últimas Medições Recebidas")
     st.dataframe(st.session_state.historico, use_container_width=True, hide_index=True)
 
 # ==========================================
